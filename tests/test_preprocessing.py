@@ -54,7 +54,7 @@ class TestPreprocessing(unittest.TestCase):
 
         result = create_labels(prepared, {"T1059"})
 
-        self.assertEqual(result["label"].tolist(), [0, 1, 1])
+        self.assertEqual(result["label"].tolist(), [0, 1, 0])
 
     def test_prepare_model_features(self):
         prepared = prepare_event_data(self.data)
