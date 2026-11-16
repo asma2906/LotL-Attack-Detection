@@ -1,26 +1,13 @@
 import os
-import csv
 import re
+import csv
+from pathlib import Path
+
 import pandas as pd
 from sklearn.preprocessing import OrdinalEncoder, StandardScaler
 
-folder_path = os.path.dirname(os.path.abspath(__file__))
-file_path = os.path.join(folder_path, "combined.csv")
 
-rows = []
-
-with open(file_path, "r", encoding="utf-8", errors="replace", newline="") as f:
-    reader = csv.reader(f)
-    header = next(reader)
-
-    for row in reader:
-        rows.append(row)
-
-df = pd.DataFrame(rows, columns=header)
-
-print("Dataset shape:", df.shape)
-
-selected_cols = [
+SELECTED_COLS = [
     "_source.@timestamp",
     "_source.agent.id",
     "_source.data.win.system.eventID",
@@ -29,217 +16,206 @@ selected_cols = [
     "_source.data.win.eventdata.commandLine",
     "_source.rule.mitre.id",
     "_source.rule.mitre.technique",
-    "_source.rule.mitre.tactic"
+    "_source.rule.mitre.tactic",
 ]
 
-df_small = df[selected_cols].copy()
-
-print("Working dataset shape:", df_small.shape)
-print(df_small.head())
-
-df_small["_source.@timestamp"] = pd.to_datetime(
-    df_small["_source.@timestamp"],
-    format="%b %d, %Y @ %H:%M:%S.%f",
-    errors="coerce"
-)
-
-print("Total rows:", len(df_small))
-print("Valid timestamps:", df_small["_source.@timestamp"].notna().sum())
-print("Invalid timestamps:", df_small["_source.@timestamp"].isna().sum())
-
-print("First date:", df_small["_source.@timestamp"].min())
-print("Last date:", df_small["_source.@timestamp"].max())
-
-# Sort all events by time
-df_small = df_small.sort_values(
-    by="_source.@timestamp"
-).reset_index(drop=True)
-
-print("Dataset shape:", df_small.shape)
-
-print("\nFirst 5 timestamps:")
-print(df_small["_source.@timestamp"].head())
-
-print("\nLast 5 timestamps:")
-print(df_small["_source.@timestamp"].tail())
-
-manifest_path = os.path.join(folder_path, "scenario_manifest.csv")
-manifest = pd.read_csv(manifest_path)
-
-# Collect all MITRE technique IDs from the scenario manifest
-manifest_techniques = set()
-
-for text in manifest.iloc[:, 5].dropna().astype(str):
-    manifest_techniques.update(
-        re.findall(r"T\d{4}(?:\.\d{3})?", text)
-    )
-
-print("Number of unique simulated techniques:", len(manifest_techniques))
-print(sorted(manifest_techniques))
-
-mitre_col = "_source.rule.mitre.id"
-
-print("MITRE column:", mitre_col)
-print("Column exists:", mitre_col in df_small.columns)
-
-def extract_event_techniques(value):
-    return set(re.findall(r"T\d{4}(?:\.\d{3})?", str(value)))
-
-def has_manifest_technique(value):
-    event_techs = extract_event_techniques(value)
-    return len(event_techs.intersection(manifest_techniques)) > 0
-
-
-matches_manifest = df_small[mitre_col].apply(has_manifest_technique)
-
-print("Events matching simulated techniques:", matches_manifest.sum())
-print("Events not matching simulated techniques:", (~matches_manifest).sum())
-
-df_small["label"] = matches_manifest.astype(int)
-
-print(df_small["label"].value_counts())
-
-print("\nPercentages:")
-print(df_small["label"].value_counts(normalize=True) * 100)
-
-model_df = df_small.drop(
-    columns=[
-        "_source.rule.mitre.id",
-        "_source.rule.mitre.technique",
-        "_source.rule.mitre.tactic"
-    ]
-).copy()
-
-print("Model dataset shape:", model_df.shape)
-print(model_df.columns.tolist())
-
-text_cols = [
+TEXT_COLS = [
     "_source.data.win.eventdata.image",
     "_source.data.win.eventdata.parentImage",
-    "_source.data.win.eventdata.commandLine"
+    "_source.data.win.eventdata.commandLine",
 ]
 
-for col in text_cols:
-    model_df[col] = model_df[col].fillna("missing").astype(str)
-
-print(model_df[text_cols].isna().sum())
-print(model_df[text_cols].head())
-
-encode_cols = [
-    "_source.agent.id",
-    "_source.data.win.system.eventID",
-    "_source.data.win.eventdata.image",
-    "_source.data.win.eventdata.parentImage",
-    "_source.data.win.eventdata.commandLine"
-]
-
-for col in encode_cols:
-    model_df[col] = model_df[col].fillna("missing").astype(str)
-
-print("Categorical columns prepared:")
-print(model_df[encode_cols].head())
-
-# Sort by agent and timestamp first
-model_df = model_df.sort_values(
-    by=["_source.agent.id", "_source.@timestamp"]
-).reset_index(drop=True)
-
-# Time difference in seconds between events from the same agent
-model_df["time_diff"] = (
-    model_df.groupby("_source.agent.id")["_source.@timestamp"]
-    .diff()
-    .dt.total_seconds()
-)
-
-# First event for each agent has no previous event
-model_df["time_diff"] = model_df["time_diff"].fillna(0)
-
-print(model_df[[
-    "_source.agent.id",
-    "_source.@timestamp",
-    "time_diff"
-]].head(20))
-
-print("\nTime difference statistics:")
-print(model_df["time_diff"].describe())
-
-train_parts = []
-val_parts = []
-test_parts = []
-
-for agent_id, group in model_df.groupby("_source.agent.id"):
-    group = group.sort_values("_source.@timestamp").reset_index(drop=True)
-
-    n = len(group)
-    train_end = int(n * 0.70)
-    val_end = int(n * 0.85)
-
-    train_parts.append(group.iloc[:train_end])
-    val_parts.append(group.iloc[train_end:val_end])
-    test_parts.append(group.iloc[val_end:])
-
-train_df = pd.concat(train_parts).reset_index(drop=True)
-val_df = pd.concat(val_parts).reset_index(drop=True)
-test_df = pd.concat(test_parts).reset_index(drop=True)
-
-print("Train:", train_df.shape)
-print("Validation:", val_df.shape)
-print("Test:", test_df.shape)
-
-print("\nTrain labels:")
-print(train_df["label"].value_counts())
-
-print("\nValidation labels:")
-print(val_df["label"].value_counts())
-
-print("\nTest labels:")
-print(test_df["label"].value_counts())
-
-encoder = OrdinalEncoder(
-    handle_unknown="use_encoded_value",
-    unknown_value=-1
-)
-
-# Fit only on training data
-train_df[encode_cols] = encoder.fit_transform(
-    train_df[encode_cols]
-)
-
-# Apply the same encoder to validation and test data
-val_df[encode_cols] = encoder.transform(
-    val_df[encode_cols]
-)
-
-test_df[encode_cols] = encoder.transform(
-    test_df[encode_cols]
-)
-
-print("Encoder fitted on training data only.")
-
-print("\nTraining encoded features:")
-print(train_df[encode_cols].head())
-
-feature_cols = [
+ENCODE_COLS = [
     "_source.agent.id",
     "_source.data.win.system.eventID",
     "_source.data.win.eventdata.image",
     "_source.data.win.eventdata.parentImage",
     "_source.data.win.eventdata.commandLine",
-    "time_diff"
 ]
 
-scaler = StandardScaler()
+FEATURE_COLS = ENCODE_COLS + ["time_diff"]
+MITRE_COL = "_source.rule.mitre.id"
+TECHNIQUE_PATTERN = r"T\d{4}(?:\.\d{3})?"
 
-train_df[feature_cols] = scaler.fit_transform(train_df[feature_cols])
 
-val_df[feature_cols] = scaler.transform(val_df[feature_cols])
+def load_event_data(file_path):
+    """Load the Windows event CSV and return a DataFrame."""
+    rows = []
+    with open(file_path, "r", encoding="utf-8", errors="replace", newline="") as file:
+        reader = csv.reader(file)
+        header = next(reader)
+        for row in reader:
+            rows.append(row)
 
-test_df[feature_cols] = scaler.transform(test_df[feature_cols])
+    df = pd.DataFrame(rows, columns=header)
+    missing = [column for column in SELECTED_COLS if column not in df.columns]
+    if missing:
+        raise ValueError(f"Missing required event columns: {missing}")
+    return df
 
-print(train_df[feature_cols].head())
 
-print("\nTraining feature means:")
-print(train_df[feature_cols].mean())
+def load_manifest_techniques(manifest_path):
+    """Extract MITRE technique IDs from the manifest's sixth column."""
+    manifest = pd.read_csv(manifest_path)
+    if manifest.shape[1] <= 5:
+        raise ValueError("The scenario manifest does not contain the expected sixth column.")
 
-print("\nTraining feature std:")
-print(train_df[feature_cols].std())
+    techniques = set()
+    for value in manifest.iloc[:, 5].dropna().astype(str):
+        techniques.update(re.findall(TECHNIQUE_PATTERN, value))
+    return techniques
+
+
+def extract_event_techniques(value):
+    return set(re.findall(TECHNIQUE_PATTERN, str(value)))
+
+
+def prepare_event_data(df):
+    """Select fields, parse timestamps, and sort events chronologically."""
+    df_small = df[SELECTED_COLS].copy()
+    df_small["_source.@timestamp"] = pd.to_datetime(
+        df_small["_source.@timestamp"],
+        format="%b %d, %Y @ %H:%M:%S.%f",
+        errors="coerce",
+    )
+    df_small = df_small.sort_values(
+        by="_source.@timestamp"
+    ).reset_index(drop=True)
+    return df_small
+
+
+def create_labels(df_small, manifest_techniques):
+    """Create proxy labels based on matches with manifest MITRE techniques."""
+    result = df_small.copy()
+    matches_manifest = result[MITRE_COL].apply(
+        lambda value: bool(extract_event_techniques(value).intersection(manifest_techniques))
+    )
+    result["label"] = matches_manifest.astype(int)
+    return result
+
+
+def prepare_model_features(df_small):
+    """Remove MITRE label-source fields and prepare categorical features."""
+    model_df = df_small.drop(
+        columns=[
+            "_source.rule.mitre.id",
+            "_source.rule.mitre.technique",
+            "_source.rule.mitre.tactic",
+        ]
+    ).copy()
+
+    for column in TEXT_COLS:
+        model_df[column] = model_df[column].fillna("missing").astype(str)
+
+    for column in ENCODE_COLS:
+        model_df[column] = model_df[column].fillna("missing").astype(str)
+
+    return model_df
+
+
+def add_time_difference(model_df):
+    """Calculate time between consecutive events from the same agent."""
+    result = model_df.sort_values(
+        by=["_source.agent.id", "_source.@timestamp"]
+    ).reset_index(drop=True).copy()
+    result["time_diff"] = (
+        result.groupby("_source.agent.id")["_source.@timestamp"]
+        .diff()
+        .dt.total_seconds()
+        .fillna(0)
+    )
+    return result
+
+
+def split_by_agent(model_df, train_ratio=0.70, validation_ratio=0.15):
+    """Split each agent's events chronologically into train/validation/test sets."""
+    train_parts, val_parts, test_parts = [], [], []
+
+    for _, group in model_df.groupby("_source.agent.id"):
+        group = group.sort_values("_source.@timestamp").reset_index(drop=True)
+        n = len(group)
+        train_end = int(n * train_ratio)
+        val_end = int(n * (train_ratio + validation_ratio))
+        train_parts.append(group.iloc[:train_end])
+        val_parts.append(group.iloc[train_end:val_end])
+        test_parts.append(group.iloc[val_end:])
+
+    if not train_parts:
+        raise ValueError("No event groups were available for splitting.")
+
+    return (
+        pd.concat(train_parts).reset_index(drop=True),
+        pd.concat(val_parts).reset_index(drop=True),
+        pd.concat(test_parts).reset_index(drop=True),
+    )
+
+
+def encode_and_scale(train_df, val_df, test_df):
+    """Fit encoders/scaler on training data and apply them to all splits."""
+    train_df = train_df.copy()
+    val_df = val_df.copy()
+    test_df = test_df.copy()
+
+    encoder = OrdinalEncoder(
+        handle_unknown="use_encoded_value",
+        unknown_value=-1,
+    )
+    train_df[ENCODE_COLS] = encoder.fit_transform(train_df[ENCODE_COLS])
+    val_df[ENCODE_COLS] = encoder.transform(val_df[ENCODE_COLS])
+    test_df[ENCODE_COLS] = encoder.transform(test_df[ENCODE_COLS])
+
+    scaler = StandardScaler()
+    train_df[FEATURE_COLS] = scaler.fit_transform(train_df[FEATURE_COLS])
+    val_df[FEATURE_COLS] = scaler.transform(val_df[FEATURE_COLS])
+    test_df[FEATURE_COLS] = scaler.transform(test_df[FEATURE_COLS])
+
+    return train_df, val_df, test_df, encoder, scaler
+
+
+def run_preprocessing(event_csv_path, manifest_csv_path):
+    """Run the complete preprocessing workflow and return its outputs."""
+    df = load_event_data(event_csv_path)
+    df_small = prepare_event_data(df)
+    manifest_techniques = load_manifest_techniques(manifest_csv_path)
+    labelled_df = create_labels(df_small, manifest_techniques)
+    model_df = prepare_model_features(labelled_df)
+    model_df = add_time_difference(model_df)
+    train_df, val_df, test_df = split_by_agent(model_df)
+    train_df, val_df, test_df, encoder, scaler = encode_and_scale(
+        train_df, val_df, test_df
+    )
+
+    return {
+        "train": train_df,
+        "validation": val_df,
+        "test": test_df,
+        "manifest_techniques": manifest_techniques,
+        "encoder": encoder,
+        "scaler": scaler,
+    }
+
+
+def main():
+    repository_root = Path(__file__).resolve().parent.parent
+    data_dir = repository_root / "data"
+    event_csv_path = data_dir / "combined.csv"
+    manifest_csv_path = data_dir / "scenario_manifest.csv"
+
+    for path in (event_csv_path, manifest_csv_path):
+        if not path.exists():
+            raise FileNotFoundError(
+                f"Required file not found: {path}. Store the CSV files in the repository's data/ folder."
+            )
+
+    results = run_preprocessing(event_csv_path, manifest_csv_path)
+    print("Preprocessing completed.")
+    print("Train:", results["train"].shape)
+    print("Validation:", results["validation"].shape)
+    print("Test:", results["test"].shape)
+    print("Train labels:\n", results["train"]["label"].value_counts())
+    print("Validation labels:\n", results["validation"]["label"].value_counts())
+    print("Test labels:\n", results["test"]["label"].value_counts())
+
+
+if __name__ == "__main__":
+    main()
