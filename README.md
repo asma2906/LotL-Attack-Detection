@@ -91,10 +91,22 @@ python -m unittest discover -s tests -v
 
 This command discovers and runs the test files inside the `tests/` directory.
 
-## 10. Team
+## 10. Automated Testing Results
+
+The project includes 17 automated unit tests using Python's `unittest` framework.
+
+The tests cover:
+
+- **Preprocessing Tests:** Event technique extraction, timestamp sorting, label creation, feature preparation, time differences, and data splitting.
+- **Sequence Creation Tests:** Short and long sequence creation.
+- **Model Tests:** Input and output shapes of both LSTM models and prediction shapes.
+
+All 17 automated tests passed successfully.
+
+## 11. Team
 
 This is a group project for the CSCY413 Special Topics in Cybersecurity course.
 
-## 11. Data Privacy
+## 12. Data Privacy
 
 Only synthetic or anonymized data should be included in this repository. Sensitive or confidential Windows event logs must not be uploaded. This helps protect privacy and prevent unauthorized access to sensitive information.
