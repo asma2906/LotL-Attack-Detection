@@ -1,4 +1,5 @@
 This folder contains the Jupyter notebooks used for data preprocessing, short-sequence LSTM, and long-sequence LSTM implementation.
+
 ## LSTM Implementation
 
 This notebook contains two LSTM models for detecting Windows Living-off-the-Land (LotL) attacks.
@@ -15,3 +16,27 @@ This notebook contains two LSTM models for detecting Windows Living-off-the-Land
 5. Run all notebook cells in order.
 
 Both models are evaluated using accuracy, precision, recall, F1-score, false-positive rate, and confusion matrices.
+
+
+
+
+## Saved LSTM Models and Preprocessing Files
+
+The trained LSTM models and preprocessing files are stored in the `models/` folder.
+
+### Trained Models
+- `short_sequence_lstm.keras` — Trained Short-Sequence LSTM model using 5 events.
+- `long_sequence_lstm.keras` — Trained Long-Sequence LSTM model using 20 events.
+
+### Preprocessing Files
+- `lstm_scaler.pkl` — Scaler for the Short-Sequence model.
+- `lstm_ordinal_encoder.pkl` — Categorical encoder for the Short-Sequence model.
+- `long_sequence_scaler.pkl` — Scaler for the Long-Sequence model.
+- `long_sequence_encoders.pkl` — Encoders for the Long-Sequence model.
+
+### Important Notes
+The saved models can be loaded using TensorFlow/Keras. The corresponding preprocessing files must be used to prepare input data consistently with training.
+
+The complete training and evaluation code is available in `notebooks/Cyber_Security_Project_(2).ipynb`.
+
+The original dataset files are required to reproduce the training and evaluation results. Only load preprocessing files from trusted sources.
