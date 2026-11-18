@@ -48,8 +48,8 @@ The models were evaluated using the following metrics:
 - `src/` - Source code and supporting scripts.
 - `tests/` - Automated tests for preprocessing, sequence creation, and model input/output shapes.
 - `requirements.txt` - List of required Python packages.
-- - `notebooks/` - Jupyter notebooks used for preprocessing, training, and evaluation.
-- - `models/` - Saved Short-Sequence and Long-Sequence LSTM models, scalers, and encoders.
+- `notebooks/` - Jupyter notebooks used for preprocessing, training, and evaluation.
+- `models/` - Saved Short-Sequence and Long-Sequence LSTM models, scalers, and encoders.
 
 ## 7. Technologies Used
 
